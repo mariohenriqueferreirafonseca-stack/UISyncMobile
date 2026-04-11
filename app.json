@@ -1,0 +1,63 @@
+{
+  "expo": {
+    "name": "UISync Mobile",
+    "slug": "UISyncMobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "uisyncmobile",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+
+    "ios": {
+      "supportsTablet": true
+    },
+
+    "android": {
+      "package": "com.mario.uisyncmobile",
+      "ndkVersion": "30.0.14904198",
+      "usesCleartextTraffic": true,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/icon-adaptive.png",
+        "backgroundColor": "#FFFFFF"
+      },
+      "permissions": ["CAMERA"],
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false
+    },
+
+    "web": {
+      "output": "static"
+    },
+
+    "plugins": [
+      "expo-router",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Permita o acesso a camera para registrar as imagens do formulario."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Permita o acesso a camera para tirar fotos no formulario.",
+          "photosPermission": "Permita o acesso a galeria para selecionar imagens do formulario."
+        }
+      ]
+    ],
+
+    "experiments": {
+      "typedRoutes": true
+    },
+
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "94f9b752-f6be-422e-b141-35fc347e39b5"
+      }
+    },
+
+    "owner": "mario_henrique"
+  }
+}

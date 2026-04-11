@@ -1,0 +1,93 @@
+[
+  {
+    "localId": "inventory-1774891103240-l23x6d",
+    "codigoBarras": "000008839428",
+    "codigoProduto": "883942",
+    "quantidadeFisica": "150.5",
+    "observacao": "aaaaaaaaa",
+    "usuarioNome": "Mario Henrique Ferreira Fonseca",
+    "usuarioMatricula": "2029871",
+    "createdAt": "2026-03-30T17:18:23.240Z",
+    "updatedAt": "2026-03-30T17:18:23.240Z",
+    "imagePath": "\\\\192.168.176.19\\Aplicativos\\UISyncMobile\\AlmoxScannerProdutosImagens\\1774891103990-30jmok.jpg",
+    "receivedAt": "2026-03-30T17:18:24.322Z"
+  },
+  {
+    "localId": "inventory-1774891037259-i4378k",
+    "codigoBarras": "000008839428",
+    "codigoProduto": "883942",
+    "quantidadeFisica": "50",
+    "observacao": "AAAAAAAAAAAA",
+    "usuarioNome": "Mario Henrique Ferreira Fonseca",
+    "usuarioMatricula": "2029871",
+    "createdAt": "2026-03-30T17:17:17.259Z",
+    "updatedAt": "2026-03-30T17:17:17.259Z",
+    "imagePath": "\\\\192.168.176.19\\Aplicativos\\UISyncMobile\\AlmoxScannerProdutosImagens\\1774891038333-zqcp2t.jpg",
+    "receivedAt": "2026-03-30T17:17:18.443Z"
+  },
+  {
+    "localId": "inventory-1774889266429-ilprz3",
+    "codigoBarras": "000008839428",
+    "codigoProduto": "883942",
+    "quantidadeFisica": "50",
+    "observacao": "KAKAKAKA",
+    "usuarioNome": "Mario Henrique Ferreira Fonseca",
+    "usuarioMatricula": "2029871",
+    "createdAt": "2026-03-30T16:47:46.429Z",
+    "updatedAt": "2026-03-30T16:47:46.429Z",
+    "imagePath": null,
+    "receivedAt": "2026-03-30T16:48:40.227Z"
+  },
+  {
+    "localId": "inventory-1774888014518-76ig7l",
+    "codigoBarras": "000008839428",
+    "codigoProduto": "883942",
+    "quantidadeFisica": "60",
+    "observacao": "Eu",
+    "usuarioNome": "Mario Henrique Ferreira Fonseca",
+    "usuarioMatricula": "2029871",
+    "createdAt": "2026-03-30T16:26:54.518Z",
+    "updatedAt": "2026-03-30T16:26:54.518Z",
+    "imagePath": "\\\\192.168.176.19\\Aplicativos\\UISyncMobile\\AlmoxScannerProdutosImagens\\1774888068821-zd73r5.jpg",
+    "receivedAt": "2026-03-30T16:27:49.027Z"
+  },
+  {
+    "localId": "inventory-1774887975918-etmv5b",
+    "codigoBarras": "000008839428",
+    "codigoProduto": "883942",
+    "quantidadeFisica": "50",
+    "observacao": "Lalalalalaljakakakakeu",
+    "usuarioNome": "Mario Henrique Ferreira Fonseca",
+    "usuarioMatricula": "2029871",
+    "createdAt": "2026-03-30T16:26:15.918Z",
+    "updatedAt": "2026-03-30T16:26:15.918Z",
+    "imagePath": null,
+    "receivedAt": "2026-03-30T16:27:09.762Z"
+  },
+  {
+    "localId": "inventory-1774887526210-kgdxsy",
+    "codigoBarras": "000008839428",
+    "codigoProduto": "883942",
+    "quantidadeFisica": "30",
+    "observacao": "Eu sou Groot",
+    "usuarioNome": "Mario Henrique Ferreira Fonseca",
+    "usuarioMatricula": "2029871",
+    "createdAt": "2026-03-30T16:18:46.210Z",
+    "updatedAt": "2026-03-30T16:18:46.210Z",
+    "imagePath": null,
+    "receivedAt": "2026-03-30T16:19:39.986Z"
+  },
+  {
+    "localId": "inventory-1774887464631-avle4x",
+    "codigoBarras": "000008839428",
+    "codigoProduto": "883942",
+    "quantidadeFisica": "50",
+    "observacao": "LalalalalalalAAAAAAA",
+    "usuarioNome": "Mario Henrique Ferreira Fonseca",
+    "usuarioMatricula": "2029871",
+    "createdAt": "2026-03-30T16:17:44.630Z",
+    "updatedAt": "2026-03-30T16:17:44.630Z",
+    "imagePath": null,
+    "receivedAt": "2026-03-30T16:18:38.411Z"
+  }
+]

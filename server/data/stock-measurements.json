@@ -1,0 +1,38 @@
+[
+  {
+    "id_medicao": "MED-20260401-272658",
+    "data_medicao": "01/04/2026",
+    "usuario_medicao": "Mario Henrique Ferreira Fonseca",
+    "lado_medicao": "DIREITO",
+    "arco": 1,
+    "angulo_graus": "2",
+    "medida_metros": "2"
+  },
+  {
+    "id_medicao": "MED-20260401-272658",
+    "data_medicao": "01/04/2026",
+    "usuario_medicao": "Mario Henrique Ferreira Fonseca",
+    "lado_medicao": "ESQUERDO",
+    "arco": 1,
+    "angulo_graus": "25",
+    "medida_metros": "2"
+  },
+  {
+    "id_medicao": "MED-20260401-208592",
+    "data_medicao": "01/04/2026",
+    "usuario_medicao": "Mario Henrique Ferreira Fonseca",
+    "lado_medicao": "DIREITO",
+    "arco": 1,
+    "angulo_graus": "20",
+    "medida_metros": "25,8"
+  },
+  {
+    "id_medicao": "MED-20260401-208592",
+    "data_medicao": "01/04/2026",
+    "usuario_medicao": "Mario Henrique Ferreira Fonseca",
+    "lado_medicao": "ESQUERDO",
+    "arco": 1,
+    "angulo_graus": "45",
+    "medida_metros": "20,6"
+  }
+]
