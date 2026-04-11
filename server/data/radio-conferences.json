@@ -1,5 +1,57 @@
 [
   {
+    "localId": "radio-1775909023548-o4lfcv",
+    "numeroSelo": "632492-MI632492",
+    "usuarioNome": "MYLLENA LIMA CAVANHA",
+    "equipamentoOperante": "SIM",
+    "botaoFunciona": "N/A",
+    "bateriaEncaixa": "N/A",
+    "existemRachaduras": "NAO",
+    "riscosProfundos": "NAO",
+    "capaProtetora": "N/A",
+    "alcaTransporte": "N/A",
+    "identificacaoIntegra": "SIM",
+    "equipamentoLimpo": "NAO",
+    "situacaoGeral": "CONFORME",
+    "observacao": "",
+    "createdAt": "2026-04-11T12:03:43.548Z",
+    "updatedAt": "2026-04-11T12:03:43.548Z",
+    "imagePaths": [
+      "\\192.168.176.19\\Aplicativos\\UISyncMobile\\ConferenciaRadiosImagens\\632492-MI632492-11-04-2026-radio-1775909023548-o4lfcv-1.jpg"
+    ],
+    "imageNames": [
+      "632492-MI632492-11-04-2026-radio-1775909023548-o4lfcv-1.jpg"
+    ],
+    "imagePath": "632492-MI632492-11-04-2026-radio-1775909023548-o4lfcv-1.jpg",
+    "receivedAt": "2026-04-11T12:03:46.104Z"
+  },
+  {
+    "localId": "radio-1775908954654-2jvpkf",
+    "numeroSelo": "632934-MI632934",
+    "usuarioNome": "MYLLENA LIMA CAVANHA",
+    "equipamentoOperante": "SIM",
+    "botaoFunciona": "N/A",
+    "bateriaEncaixa": "N/A",
+    "existemRachaduras": "NAO",
+    "riscosProfundos": "NAO",
+    "capaProtetora": "N/A",
+    "alcaTransporte": "N/A",
+    "identificacaoIntegra": "SIM",
+    "equipamentoLimpo": "NAO",
+    "situacaoGeral": "CONFORME",
+    "observacao": "",
+    "createdAt": "2026-04-11T12:02:34.654Z",
+    "updatedAt": "2026-04-11T12:02:34.654Z",
+    "imagePaths": [
+      "\\192.168.176.19\\Aplicativos\\UISyncMobile\\ConferenciaRadiosImagens\\632934-MI632934-11-04-2026-radio-1775908954654-2jvpkf-1.jpg"
+    ],
+    "imageNames": [
+      "632934-MI632934-11-04-2026-radio-1775908954654-2jvpkf-1.jpg"
+    ],
+    "imagePath": "632934-MI632934-11-04-2026-radio-1775908954654-2jvpkf-1.jpg",
+    "receivedAt": "2026-04-11T12:02:37.305Z"
+  },
+  {
     "localId": "radio-1775908449197-87fym2",
     "numeroSelo": "747943-MI747943",
     "usuarioNome": "MYLLENA LIMA CAVANHA",
