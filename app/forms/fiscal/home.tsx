@@ -38,7 +38,7 @@ export default function FiscalHome() {
   }
 
   if (authorized === null) {
-    return <View style={{ flex: 1, backgroundColor: '#021B13' }} />;
+    return <View style={{ flex: 1, backgroundColor: '#02B13' }} />;
   }
 
   return (

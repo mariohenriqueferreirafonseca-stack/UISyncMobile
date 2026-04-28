@@ -1,20 +1,16 @@
+// Mini-home do PCP.
+// Faz a guarda de acesso do setor antes de liberar o formulario de medicao.
 import { getAuthSession, userHasSectorAccess } from '@/services/auth';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Redirect, useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import {
-  KeyboardAvoidingView,
-  Platform,
-  SafeAreaView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 export default function PCPIndexScreen() {
   const router = useRouter();
+
+  // Controla se o usuario pode ou nao acessar a area do PCP.
   const [authorized, setAuthorized] = useState<boolean | null>(null);
 
   useFocusEffect(
@@ -22,12 +18,15 @@ export default function PCPIndexScreen() {
       let active = true;
 
       void (async () => {
+        // O setor 1161 (e o setor global 0000 via service) pode entrar aqui.
         const session = await getAuthSession();
         const canAccess = userHasSectorAccess(session, ['1161']);
 
-        if (active) {
-          setAuthorized(canAccess);
+        if (!active) {
+          return;
         }
+
+        setAuthorized(canAccess);
       })();
 
       return () => {
@@ -36,140 +35,122 @@ export default function PCPIndexScreen() {
     }, []),
   );
 
+  // Redireciona quem nao tem permissao.
   if (authorized === false) {
     return <Redirect href="/home" />;
   }
 
+  // Mostra um fundo simples enquanto valida a sessao.
   if (authorized === null) {
     return <View style={styles.loadingScreen} />;
   }
 
   return (
-    <LinearGradient colors={['#F4F0E8', '#E6EFE8']} style={styles.background}>
-      <SafeAreaView style={styles.safeArea}>
-        <KeyboardAvoidingView
-          style={styles.screen}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 24 : 0}
+    // Reaproveita o mesmo fundo da home do Fiscal.
+    <LinearGradient colors={['#021B13', '#0B3D2E']} style={styles.container}>
+      {/* Mantem o botao de voltar solto no topo, igual ao Fiscal. */}
+      <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+        <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+      </TouchableOpacity>
+
+      {/* Card principal com o resumo do setor e os acessos disponiveis. */}
+      <View style={styles.content}>
+        <View style={styles.iconWrap}>
+          <Ionicons name="clipboard-outline" size={36} color="#0B3D2E" />
+        </View>
+
+        <Text style={styles.title}>PCP</Text>
+        <Text style={styles.subtitle}>
+          Acesse os formularios disponiveis para o setor de PCP.
+        </Text>
+
+        {/* Acao principal do PCP hoje: abrir a medicao de estoque. */}
+        <TouchableOpacity
+          style={styles.secondaryButton}
+          onPress={() => router.push('/forms/pcp/medicao_estoque')}
         >
-          <View style={styles.content}>
-            <View style={styles.header}>
-              <TouchableOpacity style={styles.backChip} onPress={() => router.back()}>
-                <Ionicons name="arrow-back" size={24} color="#0B3D2E" />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.heroCard}>
-              <Text style={styles.eyebrow}>PCP</Text>
-              <Text style={styles.title}>Formularios PCP</Text>
-              <Text style={styles.helperText}>
-                Toque no botao abaixo para abrir o formulario de medicao de estoque.
-              </Text>
-            </View>
-
-            <TouchableOpacity
-              style={styles.primaryCard}
-              onPress={() => router.push('/forms/pcp/medicao_estoque')}
-            >
-              <View style={styles.iconBadge}>
-                <Ionicons name="clipboard-outline" size={26} color="#173328" />
-              </View>
-              <Text style={styles.primaryTitle}>Medicao de Estoque</Text>
-              <Text style={styles.primaryDescription}>
-                Abrir formulario de medicao por arcos.
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
+          <Text style={styles.secondaryButtonText}>Medição de estoque</Text>
+        </TouchableOpacity>
+      </View>
     </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
+  // Tela exibida durante a validacao inicial.
   loadingScreen: {
     flex: 1,
-    backgroundColor: '#F4F0E8',
+    backgroundColor: '#021B13',
   },
-  background: {
+
+  // Fundo base da tela, igual ao Fiscal.
+  container: {
     flex: 1,
+    padding: 24,
+    justifyContent: 'center',
   },
-  safeArea: {
-    flex: 1,
-    backgroundColor: 'transparent',
-  },
-  screen: {
-    flex: 1,
-  },
-  content: {
-    flex: 1,
-    padding: 18,
-    gap: 16,
-  },
-  header: {
-    marginTop: 6,
-  },
-  backChip: {
-    alignSelf: 'flex-start',
+
+  // Botao de voltar posicionado no topo esquerdo.
+  backButton: {
+    position: 'absolute',
+    top: 50,
+    left: 20,
     width: 44,
     height: 44,
     borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 1,
   },
-  heroCard: {
-    backgroundColor: '#173328',
-    borderRadius: 28,
-    padding: 22,
-    shadowColor: '#173328',
-    shadowOpacity: 0.18,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 5,
+
+  // Card branco central com o conteudo da home.
+  content: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 24,
+    padding: 24,
+    marginTop: 60,
   },
-  eyebrow: {
-    color: '#A9D1BA',
-    fontSize: 12,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 1.2,
-  },
-  title: {
-    marginTop: 8,
-    color: '#F8F6EF',
-    fontSize: 30,
-    lineHeight: 34,
-    fontWeight: '800',
-  },
-  helperText: {
-    marginTop: 10,
-    color: '#D2DED5',
-    lineHeight: 21,
-  },
-  primaryCard: {
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    borderRadius: 28,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: '#D6DDD4',
-  },
-  iconBadge: {
-    width: 52,
-    height: 52,
-    borderRadius: 16,
+
+  // Bloco do icone do setor.
+  iconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: '#D1FAE5',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#E7EFE8',
+    marginBottom: 20,
   },
-  primaryTitle: {
-    marginTop: 14,
-    color: '#173328',
-    fontSize: 22,
-    fontWeight: '800',
+
+  // Titulo principal do card.
+  title: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginBottom: 8,
   },
-  primaryDescription: {
-    marginTop: 8,
-    color: '#4E6B5D',
-    lineHeight: 20,
+
+  // Texto auxiliar explicando o objetivo da area.
+  subtitle: {
+    fontSize: 15,
+    color: '#475569',
+    marginBottom: 24,
+  },
+
+  // Botao principal no mesmo padrao visual do Fiscal.
+  secondaryButton: {
+    backgroundColor: '#E2EFE7',
+    borderRadius: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+
+  // Texto do botao principal.
+  secondaryButtonText: {
+    color: '#0B3D2E',
+    fontSize: 16,
+    fontWeight: '700',
   },
 });

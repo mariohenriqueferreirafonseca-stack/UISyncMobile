@@ -1,29 +1,46 @@
 # UISyncMobile
 
-UISyncMobile e um projeto mobile em Expo/React Native com backend Express + SQL Server para registro operacional com suporte offline.
+UISyncMobile e um app mobile em Expo/React Native com backend em Node.js + Express + SQL Server para operacao de formularios internos com suporte offline.
 
-## Modulos atuais
+## O que o app faz
 
-- Almoxarifado: inventario com busca por codigo de barras, foto e fila offline.
-- Fiscal: lista de radios, conferencia com checklist e fotos, e cadastro de radios.
-- PCP: medicao de estoque com salvamento local e sincronizacao automatica.
+- Almoxarifado: inventario com leitura manual/codigo de barras, foto e fila offline.
+- Fiscal: conferencia de radios com checklist, fotos e cadastro de radios.
+- PCP: medicao de estoque com salvamento local e sincronizacao.
 - Sincronizacao offline: fila compartilhada para radios, inventario e medicoes.
 
 ## Stack principal
 
-- Expo / React Native / Expo Router
-- AsyncStorage / NetInfo / Expo File System / Expo Image Picker / Expo Camera
-- Node.js / Express / MSSQL / Multer
+- Expo
+- React Native
+- Expo Router
+- AsyncStorage
+- NetInfo
+- Expo Image Picker
+- Expo Camera
+- Node.js
+- Express
+- MSSQL
+- Multer
 
-## Como rodar
+## Requisitos
 
-### 1. Instalar dependencias
+- Node.js 20+ recomendado
+- npm
+- Banco SQL Server acessivel
+- Celular Android na mesma rede da API para testes locais
+
+## Como rodar o projeto
+
+### 1. Instalar as dependencias
 
 ```bash
 npm install
 ```
 
-### 2. Configurar `.env`
+### 2. Configurar o arquivo `.env`
+
+Crie ou ajuste o `.env` com os valores do seu ambiente:
 
 ```env
 EXPO_PUBLIC_API_URL=http://SEU_IP:3000
@@ -39,11 +56,17 @@ ALMOX_DB_NAME=Almox
 RADIO_IMAGES_DIR=\\\\servidor\\pasta\\ConferenciaRadiosImagens
 ```
 
+Observacao:
+- `EXPO_PUBLIC_API_URL` e a URL da API que o app vai usar.
+- Se esse valor mudar, o app precisa ser reiniciado e um novo build precisa ser gerado para APK final.
+
 ### 3. Subir o backend
 
 ```bash
 npm run server
 ```
+
+Esse comando sobe a API em `http://SEU_IP:3000` usando `server/index.js`.
 
 ### 4. Subir o app
 
@@ -51,25 +74,60 @@ npm run server
 npx expo start -c
 ```
 
-Atalhos uteis:
+Esse comando sobe o Metro/Expo e limpa o cache.
+
+## Scripts uteis
 
 ```bash
+npm run server
 npm run android
+npm run ios
 npm run web
+npm run lint
+npm run migrate:radio-images
 ```
 
-## Pastas principais
+O que cada um faz:
+- `npm run server`: sobe o backend local.
+- `npm run android`: abre o app Android nativo pelo Expo.
+- `npm run ios`: abre o app iOS nativo pelo Expo.
+- `npm run web`: roda a versao web.
+- `npm run lint`: verifica padrao de codigo.
+- `npm run migrate:radio-images`: roda a migracao de nomes das imagens de conferencia de radios.
 
-- `app/`: telas e rotas do app.
+## Estrutura principal
+
+- `app/`: rotas e telas do app.
 - `components/`: componentes reutilizaveis de interface.
-- `services/`: regra de negocio, cache local e cliente HTTP.
-- `server/`: API Express, SQL Server e fallbacks locais.
+- `services/`: regras de negocio, cache local, sync e cliente HTTP.
+- `server/`: API, conexao com SQL Server e fallbacks locais.
+- `android/`: projeto Android nativo.
 - `docs/`: documentacao complementar.
+
+## Modulos do app
+
+### Almoxarifado
+
+- Home do setor
+- Inventario
+- Base offline do catalogo
+- Fotos e sincronizacao em fila
+
+### Fiscal
+
+- Home do setor
+- Lista de radios para conferencia
+- Formulario de conferencia
+- Cadastro de radios
+
+### PCP
+
+- Home do setor
+- Medicao de estoque por arco
+- Leitura por lado direito e esquerdo
+- Salvamento local e envio posterior
 
 ## Documentacao complementar
 
-- [Visao geral](docs/README.md)
-- [Estrutura do projeto](docs/ESTRUTURA.md)
-- [API e integracoes](docs/API.md)
-- [Build e release](docs/BUILD.md)
-- [Publicacao no GitHub](docs/GitHub.md)
+- [Build simples para APK](docs/BUILD.md)
+- [Enviar o projeto para Git e GitHub](docs/GitHub.md)

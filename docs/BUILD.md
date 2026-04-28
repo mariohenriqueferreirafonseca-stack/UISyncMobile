@@ -1,121 +1,117 @@
-# Build e Release
+# Build simples para APK
 
-## Rodando em desenvolvimento
+Este guia mostra o caminho mais simples para gerar um APK Android deste projeto.
 
-### Backend
+## O que ja esta configurado no projeto
+
+O projeto ja possui:
+
+- `app.json` com pacote Android `com.mario.uisyncmobile`
+- `eas.json` com perfil `preview` gerando `apk`
+- `eas.json` com perfil `production` gerando `app-bundle`
+
+Ou seja: para gerar um APK, o caminho mais simples hoje e usar o perfil `preview`.
+
+## Requisitos
+
+- Node.js e npm instalados
+- Dependencias do projeto instaladas
+- Conta Expo/EAS
+- Internet funcionando
+- `.env` com `EXPO_PUBLIC_API_URL` apontando para a API correta
+
+## Passo a passo mais simples
+
+### 1. Instalar dependencias
 
 ```bash
-npm run server
+npm install
 ```
 
-O comando inicia o servidor Express definido em `server/index.js`.
+Esse comando baixa os pacotes do projeto.
 
-### App mobile
+### 2. Fazer login no Expo
 
 ```bash
-npx expo start -c
+npx eas login
 ```
 
-O comando inicia o Metro Bundler e limpa o cache do Expo.
+Esse comando autentica sua conta Expo para permitir o build na nuvem.
 
-Atalhos uteis:
+### 3. Gerar o APK
 
 ```bash
-npm run android
-npm run ios
-npm run web
+npx eas build -p android --profile preview
 ```
 
-## Variaveis importantes
+Esse comando:
+- usa a plataforma Android
+- usa o perfil `preview`
+- gera um arquivo `.apk`
 
-### App
+## O que acontece depois
 
-- `EXPO_PUBLIC_API_URL`: URL base consumida pelo app
+Ao final do build, o Expo/EAS entrega um link para download do APK.
 
-### Backend
+Voce pode:
+- baixar o APK no computador e mandar para o celular
+- abrir o link direto no celular
+- instalar o APK manualmente no Android
 
-- `PORT`
-- `DB_SERVER`
-- `DB_PORT`
-- `DB_NAME`
-- `DB_USER`
-- `DB_PASSWORD`
-- `DB_ENCRYPT`
-- `DB_TRUST_SERVER_CERTIFICATE`
-- `ALMOX_DB_NAME`
-- `RADIO_IMAGES_DIR`
+## Como instalar no celular
 
-## Build Android local
+1. Baixe o APK.
+2. Envie o arquivo para o celular.
+3. Abra o APK no Android.
+4. Permita instalar apps de fonte externa, se o aparelho pedir.
+5. Finalize a instalacao.
 
-### Opcao 1. Usando Expo
+## Comando de producao
+
+Se voce quiser gerar o pacote para loja em vez de um APK simples:
 
 ```bash
-npx expo run:android --variant release
+npx eas build -p android --profile production
 ```
 
-O comando compila o app Android localmente em modo release.
+Esse comando gera um `.aab`, que e o formato usado na Play Store.
 
-### Opcao 2. Usando Gradle diretamente
+## Quando gerar outro APK
+
+Gere um novo APK sempre que voce mudar:
+
+- codigo do app
+- `EXPO_PUBLIC_API_URL`
+- permissoes/configuracoes nativas
+- icones, splash ou configuracoes do `app.json`
+
+## Alternativa para instalar direto no dispositivo
+
+Se a ideia for apenas testar no Android conectado por USB, sem gerar um APK final:
 
 ```bash
-cd android
-.\gradlew assembleRelease
+npx expo run:android --device
 ```
 
-O comando gera o APK release usando o projeto Android ja existente na pasta `android/`.
+Esse comando instala e abre o app diretamente no aparelho conectado.
 
-## EAS Build
+Importante:
+- esse caminho e util para testes
+- ele nao e o fluxo mais simples para distribuir um APK
+- para compartilhar o app com outras pessoas, prefira o `eas build`
 
-O projeto ja possui `eas.json` com dois perfis:
+## Checklist rapido
 
-- `preview`: gera APK
-- `production`: gera Android App Bundle
+Antes de buildar:
 
-### Primeira configuracao
+- `npm install`
+- backend funcionando
+- `.env` correto
+- `EXPO_PUBLIC_API_URL` apontando para a API certa
+- login no Expo feito
 
-```bash
-npm install -g eas-cli
-eas login
-```
-
-### Gerar APK de preview
-
-```bash
-eas build -p android --profile preview
-```
-
-### Gerar AAB de producao
+Para gerar o APK:
 
 ```bash
-eas build -p android --profile production
-```
-
-## Checklist antes do release
-
-- confirmar `EXPO_PUBLIC_API_URL`
-- validar `/health` no backend
-- testar login
-- validar permissao e acesso ao `RADIO_IMAGES_DIR`
-- testar sincronizacao offline de radios, inventario e PCP
-- conferir se o `.env` local nao sera publicado no Git
-
-## Publicacao do backend
-
-O backend nao gera APK. Ele roda como processo Node separado.
-
-Opcoes comuns:
-
-- `node ./server/index.js`
-- PM2
-- NSSM / Windows Service
-- IIS com reverse proxy
-
-Use quando quiser gerar build no seu computador:
-
-```bash
-cd C:\Users\Lar\Desktop\UISyncMobile
-npx expo prebuild
-
-cd android
-.\gradlew assembleRelease
+npx eas build -p android --profile preview
 ```

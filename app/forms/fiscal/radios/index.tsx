@@ -130,7 +130,7 @@ export default function RadiosListScreen() {
     } finally {
       setSyncingCatalog(false);
     }
-  }, [carregarSetores]);
+  }, [carregarRadios, carregarSetores]);
 
   useFocusEffect(
     useCallback(() => {

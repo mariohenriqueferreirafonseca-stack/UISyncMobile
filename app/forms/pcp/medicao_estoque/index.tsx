@@ -1,5 +1,6 @@
 import { getAuthSession, userHasSectorAccess, type AuthSession } from '@/services/auth';
 import {
+  cancelStockMeasurementSession,
   createStockMeasurementSession,
   persistStockMeasurementProgress,
 } from '@/services/stockMeasurement';
@@ -11,6 +12,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   SafeAreaView,
   ScrollView,
@@ -18,8 +20,8 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  useWindowDimensions,
   View,
+  useWindowDimensions,
 } from 'react-native';
 
 const TOTAL_ARCOS = 27;
@@ -32,10 +34,7 @@ type InputPair = {
   medida: string;
 };
 
-type PairsBySideState = {
-  DIREITO: InputPair[];
-  ESQUERDO: InputPair[];
-};
+type PairsBySide = Record<StockMeasurementSide, InputPair[]>;
 
 type MeasurementSession = {
   localId: string;
@@ -47,24 +46,36 @@ type MeasurementSession = {
   nomeArmazem: string;
 };
 
-function createPair(): InputPair {
+function createPairId() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function createPair(overrides?: Partial<InputPair>): InputPair {
   return {
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    angulo: '',
-    medida: '',
+    id: overrides?.id || createPairId(),
+    angulo: overrides?.angulo || '',
+    medida: overrides?.medida || '',
   };
 }
 
-function createInitialSides(): PairsBySideState {
+function createInitialSides(): PairsBySide {
   return {
     DIREITO: [createPair()],
     ESQUERDO: [createPair()],
   };
 }
 
+function getPairRefKey(lado: StockMeasurementSide, pairId: string) {
+  return `${lado}:${pairId}`;
+}
+
 export default function MedicaoEstoqueScreen() {
   const router = useRouter();
   const { height: windowHeight } = useWindowDimensions();
+  const scrollViewRef = useRef<ScrollView | null>(null);
+  const pairCardRefs = useRef<Record<string, View | null>>({});
+  const angleInputRefs = useRef<Record<string, TextInput | null>>({});
+
   const [authorized, setAuthorized] = useState<boolean | null>(null);
   const [session, setSession] = useState<AuthSession | null>(null);
   const [arcoInicial, setArcoInicial] = useState('');
@@ -75,12 +86,11 @@ export default function MedicaoEstoqueScreen() {
   );
   const [currentArco, setCurrentArco] = useState<number | null>(null);
   const [savedRows, setSavedRows] = useState<StockMeasurementRow[]>([]);
-  const [pairsBySide, setPairsBySide] = useState(createInitialSides);
+  const [pairsBySide, setPairsBySide] = useState<PairsBySide>(createInitialSides);
   const [saving, setSaving] = useState(false);
-  const scrollViewRef = useRef<ScrollView | null>(null);
-  const scrollOffsetRef = useRef(0);
-  const pairCardRefs = useRef<Record<string, View | null>>({});
-  const angleInputRefs = useRef<Record<string, TextInput | null>>({});
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelModalVisible, setCancelModalVisible] = useState(false);
+  const [scrollOffsetY, setScrollOffsetY] = useState(0);
 
   useFocusEffect(
     useCallback(() => {
@@ -105,67 +115,67 @@ export default function MedicaoEstoqueScreen() {
   );
 
   const totalLinhas = useMemo(() => savedRows.length, [savedRows.length]);
-
-  const getPairKey = useCallback(
-    (lado: StockMeasurementSide, pairId: string) => `${lado}:${pairId}`,
-    [],
+  const canCancelMeasurement = useMemo(
+    () =>
+      Boolean(
+        measurementSession ||
+          currentArco ||
+          arcoInicial.trim() ||
+          nomeAfericao.trim() ||
+          nomeArmazem,
+      ),
+    [arcoInicial, currentArco, measurementSession, nomeAfericao, nomeArmazem],
   );
+
+  const resetMeasurementState = useCallback((clearSetupFields = true) => {
+    setMeasurementSession(null);
+    setCurrentArco(null);
+    setSavedRows([]);
+    setPairsBySide(createInitialSides());
+    setCancelModalVisible(false);
+    setCancelling(false);
+
+    if (clearSetupFields) {
+      setArcoInicial('');
+      setNomeAfericao('');
+      setNomeArmazem('');
+    }
+  }, []);
 
   const centralizarEFocarLeitura = useCallback(
     (lado: StockMeasurementSide, pairId: string) => {
-      const pairKey = getPairKey(lado, pairId);
+      const refKey = getPairRefKey(lado, pairId);
+      const pairCard = pairCardRefs.current[refKey];
+      const angleInput = angleInputRefs.current[refKey];
 
-      const attemptFocus = (retries = 8) => {
-        const pairCard = pairCardRefs.current[pairKey];
-        const angleInput = angleInputRefs.current[pairKey];
-
-        if (!angleInput) {
-          if (retries > 0) {
-            setTimeout(() => attemptFocus(retries - 1), 50);
-          }
-          return;
-        }
-
-        if (!pairCard || typeof pairCard.measureInWindow !== 'function') {
-          scrollViewRef.current?.scrollToEnd({ animated: true });
-          setTimeout(() => {
-            angleInputRefs.current[pairKey]?.focus();
-          }, 180);
-          return;
-        }
-
-        pairCard.measureInWindow((_x, y, _width, height) => {
-          const targetTop = Math.max(0, windowHeight / 2 - height / 2);
-          const delta = y - targetTop;
-          const nextOffset = Math.max(0, scrollOffsetRef.current + delta);
-
-          scrollViewRef.current?.scrollTo({
-            y: nextOffset,
-            animated: true,
-          });
-
-          setTimeout(() => {
-            angleInputRefs.current[pairKey]?.focus();
-          }, 180);
-        });
+      const focusInput = () => {
+        setTimeout(() => {
+          angleInput?.focus();
+        }, 180);
       };
 
-      setTimeout(() => attemptFocus(), 40);
+      if (!pairCard || typeof pairCard.measureInWindow !== 'function') {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+        focusInput();
+        return;
+      }
+
+      requestAnimationFrame(() => {
+        pairCard.measureInWindow((_x, y, _width, height) => {
+          const targetY = Math.max(
+            scrollOffsetY + y - windowHeight / 2 + height / 2,
+            0,
+          );
+
+          scrollViewRef.current?.scrollTo({ y: targetY, animated: true });
+          focusInput();
+        });
+      });
     },
-    [getPairKey, windowHeight],
+    [scrollOffsetY, windowHeight],
   );
 
-  const resetMeasurementForm = useCallback(() => {
-    setMeasurementSession(null);
-    setCurrentArco(null);
-    setArcoInicial('');
-    setNomeAfericao('');
-    setNomeArmazem('');
-    setSavedRows([]);
-    setPairsBySide(createInitialSides());
-  }, []);
-
-  const iniciarMedicao = () => {
+  const iniciarMedicao = useCallback(() => {
     const numeroArco = Number(arcoInicial);
 
     if (!Number.isInteger(numeroArco) || numeroArco < 1 || numeroArco > TOTAL_ARCOS) {
@@ -185,51 +195,63 @@ export default function MedicaoEstoqueScreen() {
 
     const usuarioMedicao = session?.nome || 'usuario desconhecido';
     const usuarioMatricula = session?.matricula || '';
+    const nextSession = createStockMeasurementSession({
+      usuarioMedicao,
+      usuarioMatricula,
+      nomeAfericao: nomeAfericao.trim(),
+      nomeArmazem,
+    });
+    const nextSides = createInitialSides();
 
-    setMeasurementSession(
-      createStockMeasurementSession({
-        usuarioMedicao,
-        usuarioMatricula,
-        nomeAfericao: nomeAfericao.trim(),
-        nomeArmazem,
-      }),
-    );
+    setMeasurementSession(nextSession);
     setCurrentArco(numeroArco);
     setSavedRows([]);
-    setPairsBySide(createInitialSides());
-  };
+    setPairsBySide(nextSides);
 
-  const adicionarPar = (lado: StockMeasurementSide) => {
-    const nextPair = createPair();
+    setTimeout(() => {
+      centralizarEFocarLeitura('DIREITO', nextSides.DIREITO[0].id);
+    }, 120);
+  }, [arcoInicial, centralizarEFocarLeitura, nomeAfericao, nomeArmazem, session]);
 
-    setPairsBySide((current) => ({
-      ...current,
-      [lado]: [...current[lado], nextPair],
-    }));
+  const adicionarPar = useCallback(
+    (lado: StockMeasurementSide) => {
+      const nextPair = createPair();
 
-    centralizarEFocarLeitura(lado, nextPair.id);
-  };
+      setPairsBySide((current) => ({
+        ...current,
+        [lado]: [...current[lado], nextPair],
+      }));
 
-  const atualizarPar = (
-    lado: StockMeasurementSide,
-    pairId: string,
-    field: 'angulo' | 'medida',
-    value: string,
-  ) => {
-    setPairsBySide((current) => ({
-      ...current,
-      [lado]: current[lado].map((pair) =>
-        pair.id === pairId
-          ? {
-              ...pair,
-              [field]: value,
-            }
-          : pair,
-      ),
-    }));
-  };
+      setTimeout(() => {
+        centralizarEFocarLeitura(lado, nextPair.id);
+      }, 100);
+    },
+    [centralizarEFocarLeitura],
+  );
 
-  const removerPar = (lado: StockMeasurementSide, pairId: string) => {
+  const atualizarPar = useCallback(
+    (
+      lado: StockMeasurementSide,
+      pairId: string,
+      field: 'angulo' | 'medida',
+      value: string,
+    ) => {
+      setPairsBySide((current) => ({
+        ...current,
+        [lado]: current[lado].map((pair) =>
+          pair.id === pairId
+            ? {
+                ...pair,
+                [field]: value,
+              }
+            : pair,
+        ),
+      }));
+    },
+    [],
+  );
+
+  const removerPar = useCallback((lado: StockMeasurementSide, pairId: string) => {
     setPairsBySide((current) => {
       const filtered = current[lado].filter((pair) => pair.id !== pairId);
 
@@ -238,72 +260,81 @@ export default function MedicaoEstoqueScreen() {
         [lado]: filtered.length > 0 ? filtered : [createPair()],
       };
     });
-  };
+  }, []);
 
-  const buildRowsForCurrentArco = (sourcePairsBySide: PairsBySideState = pairsBySide) => {
-    if (!measurementSession || !currentArco) {
-      return null;
-    }
-
-    const rows: StockMeasurementRow[] = [];
-
-    for (const lado of SIDES) {
-      const validPairs = sourcePairsBySide[lado].filter(
-        (pair) => pair.angulo.trim() || pair.medida.trim(),
-      );
-
-      if (validPairs.length === 0) {
-        return {
-          error: `Adicione pelo menos uma leitura para o lado ${lado.toLowerCase()}.`,
-          rows: [] as StockMeasurementRow[],
-        };
+  const buildRowsForCurrentArco = useCallback(
+    (pairsSnapshot: PairsBySide = pairsBySide) => {
+      if (!measurementSession || !currentArco) {
+        return null;
       }
 
-      const incompletePair = validPairs.find(
-        (pair) => !pair.angulo.trim(),
-      );
+      const rows: StockMeasurementRow[] = [];
 
-      if (incompletePair) {
-        return {
-          error: `Preencha o angulo em todas as leituras do lado ${lado.toLowerCase()}.`,
-          rows: [] as StockMeasurementRow[],
-        };
-      }
+      for (const lado of SIDES) {
+        const validPairs = pairsSnapshot[lado].filter(
+          (pair) => pair.angulo.trim() || pair.medida.trim(),
+        );
 
-      validPairs.forEach((pair) => {
-        rows.push({
-          id_medicao: measurementSession.idMedicao,
-          data_medicao: measurementSession.dataMedicao,
-          usuario_medicao: measurementSession.usuarioMedicao,
-          nome_afericao: measurementSession.nomeAfericao,
-          nome_armazem: measurementSession.nomeArmazem,
-          lado_medicao: lado,
-          arco: currentArco,
-          angulo_graus: pair.angulo.trim(),
-          medida_metros: pair.medida.trim(),
+        if (validPairs.length === 0) {
+          return {
+            error: `Adicione pelo menos uma leitura para o lado ${lado.toLowerCase()}.`,
+            rows: [] as StockMeasurementRow[],
+          };
+        }
+
+        const invalidPair = validPairs.find((pair) => !pair.angulo.trim());
+
+        if (invalidPair) {
+          return {
+            error: `Preencha o angulo em todas as leituras do lado ${lado.toLowerCase()}.`,
+            rows: [] as StockMeasurementRow[],
+          };
+        }
+
+        validPairs.forEach((pair) => {
+          rows.push({
+            id_medicao: measurementSession.idMedicao,
+            data_medicao: measurementSession.dataMedicao,
+            usuario_medicao: measurementSession.usuarioMedicao,
+            nome_afericao: measurementSession.nomeAfericao,
+            nome_armazem: measurementSession.nomeArmazem,
+            lado_medicao: lado,
+            arco: currentArco,
+            angulo_graus: pair.angulo.trim(),
+            medida_metros: pair.medida.trim(),
+          });
         });
-      });
-    }
+      }
 
-    return {
-      error: null,
-      rows,
-    };
-  };
+      return {
+        error: null,
+        rows,
+      };
+    },
+    [currentArco, measurementSession, pairsBySide],
+  );
 
   const salvarArcoAtual = useCallback(
-    async (
-      rows: StockMeasurementRow[],
-      options?: {
-        focusNextFirstAngle?: boolean;
-      },
-    ) => {
+    async (options?: {
+      pairsSnapshot?: PairsBySide;
+      focusNextFirstAngle?: boolean;
+    }) => {
       if (!measurementSession || !currentArco) {
         Alert.alert('Inicie a medicao', 'Informe o arco inicial para comecar.');
         return;
       }
 
-      const allRows = [...savedRows, ...rows];
+      const result = buildRowsForCurrentArco(options?.pairsSnapshot);
+
+      if (!result || result.error) {
+        Alert.alert(
+          'Campos obrigatorios',
+          result?.error || 'Nao foi possivel montar a medicao.',
+        );
+        return;
+      }
+
+      const allRows = [...savedRows, ...result.rows];
       setSaving(true);
 
       try {
@@ -325,22 +356,26 @@ export default function MedicaoEstoqueScreen() {
             'Medicao concluida',
             `A medicao ${measurementSession.idMedicao} foi salva com ${allRows.length} linhas.`,
           );
-          resetMeasurementForm();
+          resetMeasurementState(true);
           return;
         }
 
         const nextSides = createInitialSides();
-        setCurrentArco(currentArco - 1);
+        const nextArco = currentArco - 1;
+
+        setCurrentArco(nextArco);
         setPairsBySide(nextSides);
 
         if (options?.focusNextFirstAngle) {
-          centralizarEFocarLeitura('DIREITO', nextSides.DIREITO[0].id);
+          setTimeout(() => {
+            centralizarEFocarLeitura('DIREITO', nextSides.DIREITO[0].id);
+          }, 120);
           return;
         }
 
         Alert.alert(
           'Arco salvo',
-          `As leituras do arco ${currentArco} foram salvas. Agora siga para o arco ${currentArco - 1}.`,
+          `As leituras do arco ${currentArco} foram salvas. Agora siga para o arco ${nextArco}.`,
         );
       } catch (error) {
         Alert.alert(
@@ -352,77 +387,53 @@ export default function MedicaoEstoqueScreen() {
       }
     },
     [
+      buildRowsForCurrentArco,
       centralizarEFocarLeitura,
       currentArco,
       measurementSession,
-      resetMeasurementForm,
+      resetMeasurementState,
       savedRows,
     ],
   );
 
-  const avancarArco = async () => {
-    if (!measurementSession || !currentArco) {
-      Alert.alert('Inicie a medicao', 'Informe o arco inicial para comecar.');
-      return;
-    }
-
-    const result = buildRowsForCurrentArco();
-
-    if (!result || result.error) {
-      Alert.alert('Campos obrigatorios', result?.error || 'Nao foi possivel montar a medicao.');
-      return;
-    }
-
-    await salvarArcoAtual(result.rows);
-  };
-
-  const duplicarDireitoParaEsquerdoEAvancar = async () => {
-    const leiturasDireitas = pairsBySide.DIREITO
-      .filter((pair) => pair.angulo.trim() || pair.medida.trim())
-      .map((pair) => ({
-        id: createPair().id,
-        angulo: pair.angulo.trim(),
-        medida: pair.medida.trim(),
-      }));
-
-    if (leiturasDireitas.length === 0) {
-      Alert.alert(
-        'Campos obrigatorios',
-        'Preencha pelo menos uma leitura completa no lado direito antes de duplicar.',
-      );
-      return;
-    }
-
-    const leituraIncompleta = leiturasDireitas.find(
-      (pair) => !pair.angulo.trim(),
+  const duplicarDireitoParaEsquerdoEAvancar = useCallback(async () => {
+    const duplicatedLeft = pairsBySide.DIREITO.map((pair) =>
+      createPair({
+        angulo: pair.angulo,
+        medida: pair.medida,
+      }),
     );
 
-    if (leituraIncompleta) {
-      Alert.alert(
-        'Campos obrigatorios',
-        'Preencha o angulo em todas as leituras do lado direito antes de duplicar.',
-      );
-      return;
-    }
-
-    const duplicatedPairsBySide: PairsBySideState = {
-      DIREITO: pairsBySide.DIREITO,
-      ESQUERDO: leiturasDireitas,
-    };
-
-    setPairsBySide(duplicatedPairsBySide);
-
-    const result = buildRowsForCurrentArco(duplicatedPairsBySide);
-
-    if (!result || result.error) {
-      Alert.alert('Campos obrigatorios', result?.error || 'Nao foi possivel montar a medicao.');
-      return;
-    }
-
-    await salvarArcoAtual(result.rows, {
+    await salvarArcoAtual({
+      pairsSnapshot: {
+        ...pairsBySide,
+        ESQUERDO: duplicatedLeft,
+      },
       focusNextFirstAngle: true,
     });
-  };
+  }, [pairsBySide, salvarArcoAtual]);
+
+  const handleConfirmCancel = useCallback(async () => {
+    setCancelling(true);
+
+    try {
+      if (measurementSession) {
+        await cancelStockMeasurementSession({
+          localId: measurementSession.localId,
+          idMedicao: measurementSession.idMedicao,
+        });
+      }
+
+      resetMeasurementState(true);
+    } catch (error) {
+      Alert.alert(
+        'Erro',
+        error instanceof Error ? error.message : 'Nao foi possivel cancelar a medicao.',
+      );
+    } finally {
+      setCancelling(false);
+    }
+  }, [measurementSession, resetMeasurementState]);
 
   if (authorized === false) {
     return <Redirect href="/home" />;
@@ -445,10 +456,8 @@ export default function MedicaoEstoqueScreen() {
             style={styles.container}
             contentContainerStyle={styles.content}
             keyboardShouldPersistTaps="handled"
+            onScroll={(event) => setScrollOffsetY(event.nativeEvent.contentOffset.y)}
             scrollEventThrottle={16}
-            onScroll={(event) => {
-              scrollOffsetRef.current = event.nativeEvent.contentOffset.y;
-            }}
           >
             <View style={styles.header}>
               <TouchableOpacity style={styles.backChip} onPress={() => router.back()}>
@@ -460,8 +469,8 @@ export default function MedicaoEstoqueScreen() {
               <Text style={styles.eyebrow}>PCP</Text>
               <Text style={styles.title}>Medicao de Estoque</Text>
               <Text style={styles.helperText}>
-                Cada arco e preenchido separadamente. Ao salvar, o app registra o arco
-                no offline e avanca para o proximo em ordem decrescente.
+                Esse formulario tem como objetivo agilizar e digitalizar a medicao do
+                estoque de soja, farelo, casca e demais.
               </Text>
             </View>
 
@@ -519,9 +528,20 @@ export default function MedicaoEstoqueScreen() {
                 </TouchableOpacity>
               ) : null}
 
+              {!currentArco && canCancelMeasurement ? (
+                <TouchableOpacity
+                  style={styles.secondaryButton}
+                  onPress={() => setCancelModalVisible(true)}
+                >
+                  <Text style={styles.secondaryButtonText}>Cancelar medicao</Text>
+                </TouchableOpacity>
+              ) : null}
+
               {measurementSession ? (
                 <View style={styles.summaryBox}>
-                  <Text style={styles.summaryText}>ID da medicao: {measurementSession.idMedicao}</Text>
+                  <Text style={styles.summaryText}>
+                    ID da medicao: {measurementSession.idMedicao}
+                  </Text>
                   <Text style={styles.summaryText}>
                     Nome: {measurementSession.nomeAfericao}
                   </Text>
@@ -529,7 +549,8 @@ export default function MedicaoEstoqueScreen() {
                     Armazem: {measurementSession.nomeArmazem}
                   </Text>
                   <Text style={styles.summaryText}>
-                    Data: {measurementSession.dataMedicao} | Operador: {measurementSession.usuarioMedicao}
+                    Data: {measurementSession.dataMedicao} | Operador:{' '}
+                    {measurementSession.usuarioMedicao}
                   </Text>
                   <Text style={styles.summaryText}>Linhas salvas: {totalLinhas}</Text>
                 </View>
@@ -559,74 +580,74 @@ export default function MedicaoEstoqueScreen() {
                       ) : null}
                     </View>
 
-                    {pairsBySide[lado].map((pair, index) => (
-                      <View
-                        key={pair.id}
-                        ref={(node) => {
-                          pairCardRefs.current[getPairKey(lado, pair.id)] = node;
-                        }}
-                        collapsable={false}
-                        style={styles.pairCard}
-                      >
-                        <View style={styles.pairHeader}>
-                          <Text style={styles.pairTitle}>Leitura {index + 1}</Text>
-                          {pairsBySide[lado].length > 1 ? (
-                            <TouchableOpacity onPress={() => removerPar(lado, pair.id)}>
-                              <Text style={styles.removeText}>Remover</Text>
-                            </TouchableOpacity>
-                          ) : null}
-                        </View>
+                    {pairsBySide[lado].map((pair, index) => {
+                      const refKey = getPairRefKey(lado, pair.id);
 
-                        <Text style={styles.label}>ANGULO</Text>
-                        <TextInput
+                      return (
+                        <View
+                          key={pair.id}
                           ref={(node) => {
-                            angleInputRefs.current[getPairKey(lado, pair.id)] = node;
+                            pairCardRefs.current[refKey] = node;
                           }}
-                          style={styles.input}
-                          value={pair.angulo}
-                          onChangeText={(value) => atualizarPar(lado, pair.id, 'angulo', value)}
-                          keyboardType="numeric"
-                          placeholder="Digite o angulo"
-                          placeholderTextColor="#7A857D"
-                        />
+                          style={styles.pairCard}
+                        >
+                          <View style={styles.pairHeader}>
+                            <Text style={styles.pairTitle}>Leitura {index + 1}</Text>
+                            {pairsBySide[lado].length > 1 ? (
+                              <TouchableOpacity onPress={() => removerPar(lado, pair.id)}>
+                                <Text style={styles.removeText}>Remover</Text>
+                              </TouchableOpacity>
+                            ) : null}
+                          </View>
 
-                        <Text style={styles.label}>MEDIDA</Text>
-                        <TextInput
-                          style={styles.input}
-                          value={pair.medida}
-                          onChangeText={(value) => atualizarPar(lado, pair.id, 'medida', value)}
-                          keyboardType="numeric"
-                          placeholder="Digite a medida"
-                          placeholderTextColor="#7A857D"
-                        />
-                      </View>
-                    ))}
+                          <Text style={styles.label}>ANGULO</Text>
+                          <TextInput
+                            ref={(node) => {
+                              angleInputRefs.current[refKey] = node;
+                            }}
+                            style={styles.input}
+                            value={pair.angulo}
+                            onChangeText={(value) =>
+                              atualizarPar(lado, pair.id, 'angulo', value)
+                            }
+                            keyboardType="numeric"
+                            placeholder="Digite o angulo"
+                            placeholderTextColor="#7A857D"
+                          />
+
+                          <Text style={styles.label}>MEDIDA</Text>
+                          <TextInput
+                            style={styles.input}
+                            value={pair.medida}
+                            onChangeText={(value) =>
+                              atualizarPar(lado, pair.id, 'medida', value)
+                            }
+                            keyboardType="numeric"
+                            placeholder="Digite a medida"
+                            placeholderTextColor="#7A857D"
+                          />
+                        </View>
+                      );
+                    })}
 
                     {lado === 'DIREITO' ? (
                       <View style={styles.sideActionRow}>
                         <TouchableOpacity
-                          style={[styles.sideActionButton, saving && styles.buttonDisabled]}
+                          style={styles.sideActionButton}
                           onPress={() => adicionarPar(lado)}
-                          disabled={saving}
                         >
                           <Ionicons name="add" size={18} color="#173328" />
                           <Text style={styles.sideActionButtonText}>Adicionar leitura</Text>
                         </TouchableOpacity>
 
                         <TouchableOpacity
-                          style={[
-                            styles.sideActionButton,
-                            styles.duplicateButton,
-                            saving && styles.buttonDisabled,
-                          ]}
+                          style={[styles.sideActionButton, styles.duplicateActionButton]}
                           onPress={() => void duplicarDireitoParaEsquerdoEAvancar()}
                           disabled={saving}
                         >
                           <Ionicons name="copy-outline" size={18} color="#173328" />
-                          <Text style={styles.duplicateButtonText}>
-                            {currentArco === 1
-                              ? 'Duplicar e concluir'
-                              : 'Duplicar e avancar'}
+                          <Text style={styles.sideActionButtonText}>
+                            Duplicar no lado esquerdo e avancar
                           </Text>
                         </TouchableOpacity>
                       </View>
@@ -636,7 +657,7 @@ export default function MedicaoEstoqueScreen() {
 
                 <TouchableOpacity
                   style={[styles.saveButton, saving && styles.buttonDisabled]}
-                  onPress={() => void avancarArco()}
+                  onPress={() => void salvarArcoAtual()}
                   disabled={saving}
                 >
                   <Text style={styles.saveButtonText}>
@@ -647,11 +668,61 @@ export default function MedicaoEstoqueScreen() {
                         : `Salvar arco ${currentArco} e ir para ${currentArco - 1}`}
                   </Text>
                 </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.secondaryButton, (saving || cancelling) && styles.buttonDisabled]}
+                  onPress={() => setCancelModalVisible(true)}
+                  disabled={saving || cancelling}
+                >
+                  <Text style={styles.secondaryButtonText}>Cancelar medicao</Text>
+                </TouchableOpacity>
               </View>
             ) : null}
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
+
+      <Modal
+        visible={cancelModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!cancelling) {
+            setCancelModalVisible(false);
+          }
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Cancelar medicao</Text>
+            <Text style={styles.modalSubtitle}>
+              {measurementSession
+                ? 'Isso vai remover a medicao salva no aparelho, excluir no servidor quando possivel e voltar para o inicio do formulario.'
+                : 'Isso vai descartar os dados preenchidos e voltar para o inicio do formulario.'}
+            </Text>
+
+            <View style={styles.modalActionRow}>
+              <TouchableOpacity
+                style={styles.modalSecondaryButton}
+                onPress={() => setCancelModalVisible(false)}
+                disabled={cancelling}
+              >
+                <Text style={styles.modalSecondaryButtonText}>Voltar</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalPrimaryButton, cancelling && styles.buttonDisabled]}
+                onPress={() => void handleConfirmCancel()}
+                disabled={cancelling}
+              >
+                <Text style={styles.modalPrimaryButtonText}>
+                  {cancelling ? 'Cancelando...' : 'Confirmar cancelamento'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </LinearGradient>
   );
 }
@@ -759,6 +830,19 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '800',
   },
+  secondaryButton: {
+    marginTop: 12,
+    borderRadius: 18,
+    paddingVertical: 14,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#C76B6B',
+    backgroundColor: '#FFF6F6',
+  },
+  secondaryButtonText: {
+    color: '#A24B4B',
+    fontWeight: '800',
+  },
   summaryBox: {
     marginTop: 14,
     padding: 14,
@@ -835,37 +919,6 @@ const styles = StyleSheet.create({
     color: '#173328',
     fontWeight: '700',
   },
-  sideActionRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 14,
-  },
-  sideActionButton: {
-    flex: 1,
-    minHeight: 48,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#C7D7CB',
-    backgroundColor: '#E7EFE8',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingHorizontal: 14,
-  },
-  sideActionButtonText: {
-    color: '#173328',
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-  duplicateButton: {
-    marginTop: 0,
-  },
-  duplicateButtonText: {
-    color: '#173328',
-    fontWeight: '800',
-    textAlign: 'center',
-  },
   pairCard: {
     marginTop: 12,
     paddingTop: 8,
@@ -885,6 +938,31 @@ const styles = StyleSheet.create({
     color: '#C76B6B',
     fontWeight: '700',
   },
+  sideActionRow: {
+    marginTop: 16,
+    flexDirection: 'row',
+    gap: 10,
+  },
+  sideActionButton: {
+    flex: 1,
+    minHeight: 52,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+    backgroundColor: '#E7EFE8',
+    borderWidth: 1,
+    borderColor: '#D4DBD1',
+    gap: 6,
+  },
+  duplicateActionButton: {
+    backgroundColor: '#EAF3EC',
+  },
+  sideActionButtonText: {
+    color: '#173328',
+    fontWeight: '800',
+    textAlign: 'center',
+  },
   saveButton: {
     marginTop: 18,
     backgroundColor: '#173328',
@@ -898,5 +976,61 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.7,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(9, 20, 16, 0.42)',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    backgroundColor: '#FFFDF8',
+    borderRadius: 24,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#D6DDD4',
+  },
+  modalTitle: {
+    color: '#173328',
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  modalSubtitle: {
+    marginTop: 10,
+    color: '#4E6B5D',
+    lineHeight: 20,
+  },
+  modalActionRow: {
+    marginTop: 20,
+    flexDirection: 'row',
+    gap: 12,
+  },
+  modalSecondaryButton: {
+    flex: 1,
+    minHeight: 50,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#D4DBD1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F7F8F4',
+  },
+  modalSecondaryButtonText: {
+    color: '#264337',
+    fontWeight: '800',
+  },
+  modalPrimaryButton: {
+    flex: 1.4,
+    minHeight: 50,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#173328',
+    paddingHorizontal: 14,
+  },
+  modalPrimaryButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+    textAlign: 'center',
   },
 });

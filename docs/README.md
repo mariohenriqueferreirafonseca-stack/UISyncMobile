@@ -1,70 +1,46 @@
 # UISyncMobile
 
-## Visao geral
+UISyncMobile e um app mobile em Expo/React Native com backend em Node.js + Express + SQL Server para operacao de formularios internos com suporte offline.
 
-UISyncMobile e um aplicativo mobile para registro operacional em campo, com autenticacao por usuario do banco, controle de acesso por setor e suporte offline.
+## O que o app faz
 
-Hoje o projeto esta organizado em tres frentes principais:
+- Almoxarifado: inventario com leitura manual/codigo de barras, foto e fila offline.
+- Fiscal: conferencia de radios com checklist, fotos e cadastro de radios.
+- PCP: medicao de estoque com salvamento local e sincronizacao.
+- Sincronizacao offline: fila compartilhada para radios, inventario e medicoes.
 
-- app mobile em Expo/React Native
-- camada de servicos compartilhados para regra de negocio e persistencia local
-- backend Express que conversa com SQL Server e com armazenamento de imagens
+## Stack principal
 
-## O que o projeto entrega hoje
+- Expo
+- React Native
+- Expo Router
+- AsyncStorage
+- NetInfo
+- Expo Image Picker
+- Expo Camera
+- Node.js
+- Express
+- MSSQL
+- Multer
 
-- login com usuarios do banco `Forms`
-- controle de acesso por setor, com setor `0000` liberando acesso global
-- home principal com navegacao por setor
-- almoxarifado com inventario e base offline de produtos
-- fiscal com lista de radios, conferencia separada e cadastro de radios
-- pcp com medicao de estoque e progresso salvo localmente
-- fila offline compartilhada para radios, inventario e medicoes
-- sincronizacao automatica quando o app volta ao foreground ou a conexao reaparece
-- upload de imagens para radios e inventario
-- fallbacks locais no backend para quando algum registro precisa ser preservado fora do banco
+## Requisitos
 
-## Modulos atuais
-
-### Almoxarifado
-
-- mini-home do setor
-- formulario de inventario
-- busca por codigo de barras
-- catalogo offline de produtos
-- foto opcional da contagem
-
-### Fiscal
-
-- mini-home do setor
-- lista de radios para conferencia
-- tela separada para conferencia de radios
-- cadastro de radios com schema dinamico e donos vinculados
-- relatorio e status de conferencia por janela de dias
-
-### PCP
-
-- mini-home do setor
-- medicao de estoque com progresso local
-- envio pela mesma fila offline compartilhada
-
-## Arquitetura resumida
-
-- `app/` contem as telas e rotas do Expo Router.
-- `services/` concentra autenticacao, regras de cada formulario, armazenamento local e cliente HTTP.
-- `services/sync/` concentra fila offline, bootstrap, tipos e chaves do AsyncStorage.
-- `server/` concentra os endpoints, o acesso ao SQL Server, o upload de imagens e os fallbacks locais.
+- Node.js 20+ recomendado
+- npm
+- Banco SQL Server acessivel
+- Celular Android na mesma rede da API para testes locais
 
 ## Como rodar o projeto
 
-### 1. Instalar dependencias
+### 1. Instalar as dependencias
 
 ```bash
 npm install
 ```
 
-### 2. Configurar variaveis de ambiente
+### 2. Configurar o arquivo `.env`
 
-Crie ou ajuste o arquivo `.env` na raiz com pelo menos:
+Crie ou ajuste o `.env` com os valores do seu ambiente:
 
 ```env
 EXPO_PUBLIC_API_URL=http://SEU_IP:3000
@@ -80,11 +56,17 @@ ALMOX_DB_NAME=Almox
 RADIO_IMAGES_DIR=\\\\servidor\\pasta\\ConferenciaRadiosImagens
 ```
 
+Observacao:
+- `EXPO_PUBLIC_API_URL` e a URL da API que o app vai usar.
+- Se esse valor mudar, o app precisa ser reiniciado e um novo build precisa ser gerado para APK final.
+
 ### 3. Subir o backend
 
 ```bash
 npm run server
 ```
+
+Esse comando sobe a API em `http://SEU_IP:3000` usando `server/index.js`.
 
 ### 4. Subir o app
 
@@ -92,51 +74,60 @@ npm run server
 npx expo start -c
 ```
 
-Atalhos uteis:
+Esse comando sobe o Metro/Expo e limpa o cache.
+
+## Scripts uteis
 
 ```bash
+npm run server
 npm run android
+npm run ios
 npm run web
+npm run lint
+npm run migrate:radio-images
 ```
 
-## Fluxos principais
+O que cada um faz:
+- `npm run server`: sobe o backend local.
+- `npm run android`: abre o app Android nativo pelo Expo.
+- `npm run ios`: abre o app iOS nativo pelo Expo.
+- `npm run web`: roda a versao web.
+- `npm run lint`: verifica padrao de codigo.
+- `npm run migrate:radio-images`: roda a migracao de nomes das imagens de conferencia de radios.
 
-### Login
+## Estrutura principal
 
-1. O usuario informa matricula e senha.
-2. O app chama `POST /api/auth/login`.
-3. O backend valida no banco e devolve a sessao.
-4. A sessao e salva localmente no AsyncStorage.
+- `app/`: rotas e telas do app.
+- `components/`: componentes reutilizaveis de interface.
+- `services/`: regras de negocio, cache local, sync e cliente HTTP.
+- `server/`: API, conexao com SQL Server e fallbacks locais.
+- `android/`: projeto Android nativo.
+- `docs/`: documentacao complementar.
 
-### Fiscal - radios
+## Modulos do app
 
-1. O usuario entra na lista de radios.
-2. A lista consulta o servidor ou o cache offline do aparelho.
-3. Ao tocar em um item, a navegacao abre a tela de conferencia com o selo selecionado.
-4. A conferencia salva os dados localmente, entra na fila e tenta sincronizar.
-5. O backend grava a conferencia e as imagens no destino configurado.
+### Almoxarifado
 
-### Fiscal - cadastro de radios
+- Home do setor
+- Inventario
+- Base offline do catalogo
+- Fotos e sincronizacao em fila
 
-1. O app carrega o schema dinamico do cadastro.
-2. A listagem de radios cadastrados e exibida para busca e edicao.
-3. O usuario pode criar ou atualizar radio e seus donos vinculados.
+### Fiscal
 
-### Almoxarifado - inventario
+- Home do setor
+- Lista de radios para conferencia
+- Formulario de conferencia
+- Cadastro de radios
 
-1. O usuario consulta o produto por codigo de barras.
-2. O app tenta cache local antes de buscar no servidor.
-3. A contagem e salva localmente e enviada pela fila offline.
+### PCP
 
-### PCP - medicao de estoque
+- Home do setor
+- Medicao de estoque por arco
+- Leitura por lado direito e esquerdo
+- Salvamento local e envio posterior
 
-1. O usuario abre a sessao de medicao.
-2. As leituras sao salvas localmente.
-3. O envio segue pela mesma fila de sincronizacao.
+## Documentacao complementar
 
-## Documentos complementares
-
-- `docs/ESTRUTURA.md`: mapa de pastas, telas e responsabilidades
-- `docs/API.md`: endpoints, integracoes e permissoes
-- `docs/BUILD.md`: desenvolvimento, builds locais e EAS Build
-- `docs/GitHub.md`: comandos para publicar o projeto no GitHub
+- [Build simples para APK](docs/BUILD.md)
+- [Enviar o projeto para Git e GitHub](docs/GitHub.md)

@@ -342,6 +342,158 @@ async function prepareRadioConferenceImagesForSave(
   return preparedImages;
 }
 
+function didRadioConferenceImagesChange(
+  currentImages: RadioConferenceImage[],
+  nextImages: RadioConferenceImage[],
+) {
+  return (
+    currentImages.length !== nextImages.length ||
+    currentImages.some((image, index) => {
+      const nextImage = nextImages[index];
+
+      if (!nextImage) {
+        return true;
+      }
+
+      return (
+        image.uri !== nextImage.uri ||
+        image.fileName !== nextImage.fileName ||
+        image.mimeType !== nextImage.mimeType ||
+        Boolean(image.isExisting) !== Boolean(nextImage.isExisting)
+      );
+    })
+  );
+}
+
+async function migrateRadioConferenceRecordImageNames<
+  T extends {
+    localId: string;
+    numeroSelo: string;
+    createdAt: string;
+    images: RadioConferenceImage[];
+  },
+>(record: T): Promise<{ record: T; changed: boolean }> {
+  if (!Array.isArray(record.images) || record.images.length === 0) {
+    return {
+      record,
+      changed: false,
+    };
+  }
+
+  try {
+    const migratedImages = await prepareRadioConferenceImagesForSave(record.images, {
+      numeroSelo: record.numeroSelo,
+      createdAt: record.createdAt,
+    });
+
+    if (!didRadioConferenceImagesChange(record.images, migratedImages)) {
+      return {
+        record,
+        changed: false,
+      };
+    }
+
+    return {
+      record: {
+        ...record,
+        images: migratedImages,
+      },
+      changed: true,
+    };
+  } catch {
+    return {
+      record,
+      changed: false,
+    };
+  }
+}
+
+export async function migrateLocalRadioConferenceImageNames() {
+  if (Platform.OS === 'web' || !FileSystem.documentDirectory) {
+    return;
+  }
+
+  try {
+    const storedConferences = await readStorage<StoredRadioConference[]>(
+      storageKeys.radioConferences,
+      [],
+    );
+    const migratedImagesByLocalId = new Map<string, RadioConferenceImage[]>();
+    let conferencesChanged = false;
+    const nextConferences: StoredRadioConference[] = [];
+
+    for (const conference of storedConferences) {
+      const result = await migrateRadioConferenceRecordImageNames(conference);
+
+      nextConferences.push(result.record);
+      migratedImagesByLocalId.set(result.record.localId, result.record.images);
+
+      if (result.changed) {
+        conferencesChanged = true;
+      }
+    }
+
+    if (conferencesChanged) {
+      await writeStorage(storageKeys.radioConferences, nextConferences);
+    }
+
+    const syncQueue = await readStorage<SyncQueueItem[]>(storageKeys.syncQueue, []);
+    let queueChanged = false;
+    const nextQueue: SyncQueueItem[] = [];
+
+    for (const item of syncQueue) {
+      if (
+        item.entityType !== 'radio-conference' ||
+        !('numeroSelo' in item.payload) ||
+        !('images' in item.payload)
+      ) {
+        nextQueue.push(item);
+        continue;
+      }
+
+      const storedImages = migratedImagesByLocalId.get(item.payload.localId);
+
+      if (storedImages) {
+        if (!didRadioConferenceImagesChange(item.payload.images, storedImages)) {
+          nextQueue.push(item);
+          continue;
+        }
+
+        nextQueue.push({
+          ...item,
+          payload: {
+            ...item.payload,
+            images: storedImages,
+          },
+        });
+        queueChanged = true;
+        continue;
+      }
+
+      const result = await migrateRadioConferenceRecordImageNames(item.payload);
+
+      nextQueue.push(
+        result.changed
+          ? {
+              ...item,
+              payload: result.record,
+            }
+          : item,
+      );
+
+      if (result.changed) {
+        queueChanged = true;
+      }
+    }
+
+    if (queueChanged) {
+      await writeStorage(storageKeys.syncQueue, nextQueue);
+    }
+  } catch {
+    // A migracao e melhor-esforco. Se algo falhar, o app nao deve deixar de abrir.
+  }
+}
+
 export async function findRadioSelos(query: string) {
   const sanitizedQuery = query.trim().toUpperCase();
 

@@ -18,6 +18,7 @@ const localStockMeasurementFallbackPath = path.join(
   'stock-measurements.json',
 );
 const stockMeasurementTableName = 'base_aferi\u00E7\u00E3o_estoque';
+const RADIO_REGISTRY_DELETE_PASSWORD = 'dominacaoglobal';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -194,13 +195,6 @@ function upsertLocalFallback(filePath, payload, keyName) {
   fs.writeFileSync(filePath, JSON.stringify(filteredItems, null, 2));
 }
 
-function removeLocalFallbackItems(filePath, predicate) {
-  ensureDirectory(path.dirname(filePath));
-  const existingItems = readLocalFallback(filePath);
-  const filteredItems = existingItems.filter((item) => !predicate(item));
-  fs.writeFileSync(filePath, JSON.stringify(filteredItems, null, 2));
-}
-
 function readLocalFallback(filePath) {
   if (!fs.existsSync(filePath)) {
     return [];
@@ -212,6 +206,19 @@ function readLocalFallback(filePath) {
   } catch {
     return [];
   }
+}
+
+function writeLocalFallback(filePath, items) {
+  ensureDirectory(path.dirname(filePath));
+  fs.writeFileSync(filePath, JSON.stringify(items, null, 2));
+}
+
+function removeLocalFallbackItems(filePath, predicate) {
+  const existingItems = readLocalFallback(filePath);
+  writeLocalFallback(
+    filePath,
+    existingItems.filter((item) => !predicate(item)),
+  );
 }
 
 function normalizePathSlashes(filePath) {
@@ -266,14 +273,24 @@ async function getTableSchema(pool, schemaName, tableName, databaseName) {
     .input('tableName', sql.NVarChar, tableName)
     .query(`
       SELECT
-        COLUMN_NAME AS name,
-        DATA_TYPE AS dataType,
-        CASE WHEN IS_NULLABLE = 'YES' THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END AS isNullable,
-        ORDINAL_POSITION AS ordinalPosition
-      FROM ${dbPrefix}INFORMATION_SCHEMA.COLUMNS
-      WHERE TABLE_SCHEMA = @schemaName
-        AND TABLE_NAME = @tableName
-      ORDER BY ORDINAL_POSITION
+        isc.COLUMN_NAME AS name,
+        isc.DATA_TYPE AS dataType,
+        CASE WHEN isc.IS_NULLABLE = 'YES' THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END AS isNullable,
+        isc.ORDINAL_POSITION AS ordinalPosition,
+        CASE WHEN sc.is_identity = 1 THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END AS isIdentity,
+        CASE WHEN sc.is_computed = 1 THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END AS isComputed
+      FROM ${dbPrefix}INFORMATION_SCHEMA.COLUMNS AS isc
+      INNER JOIN ${dbPrefix}sys.tables AS st
+        ON st.name = isc.TABLE_NAME
+      INNER JOIN ${dbPrefix}sys.schemas AS ss
+        ON ss.schema_id = st.schema_id
+       AND ss.name = isc.TABLE_SCHEMA
+      INNER JOIN ${dbPrefix}sys.columns AS sc
+        ON sc.object_id = st.object_id
+       AND sc.name = isc.COLUMN_NAME
+      WHERE isc.TABLE_SCHEMA = @schemaName
+        AND isc.TABLE_NAME = @tableName
+      ORDER BY isc.ORDINAL_POSITION
     `);
 
   return result.recordset.map((row) => ({
@@ -281,6 +298,8 @@ async function getTableSchema(pool, schemaName, tableName, databaseName) {
     dataType: row.dataType,
     isNullable: Boolean(row.isNullable),
     ordinalPosition: Number(row.ordinalPosition),
+    isIdentity: Boolean(row.isIdentity),
+    isComputed: Boolean(row.isComputed),
   }));
 }
 
@@ -487,7 +506,12 @@ async function resolveRadioReportColumns(pool) {
 }
 
 async function resolveRadioRegistrySchema(pool) {
-  const dimRadios = await getTableSchema(pool, 'dbo', 'dimRadios');
+  const dimRadios = (await getTableSchema(pool, 'dbo', 'dimRadios')).filter(
+    (column) =>
+      !column.isIdentity &&
+      !column.isComputed &&
+      !['timestamp', 'rowversion'].includes(String(column.dataType).toLowerCase()),
+  );
   const fatoUsuariosRadios = await getTableSchema(pool, 'dbo', 'fatoUsuariosRadios');
   const primaryKey = await resolveRadioSeloColumn(pool);
   const ownerForeignKey = fatoUsuariosRadios.find(
@@ -508,6 +532,81 @@ async function resolveRadioRegistrySchema(pool) {
     primaryKey,
     ownerForeignKey,
   };
+}
+
+function resolveRadioRegistryListColumns(columns) {
+  const columnNames = columns.map((column) => column.name);
+
+  return {
+    modelo: pickColumn(columnNames, [
+      'RadioEquipamentoModelo',
+      'RadioModelo',
+      'Modelo',
+      'Equipamento',
+      'RadioEquipamento',
+      'Descricao',
+    ]),
+    setor: pickColumn(columnNames, [
+      'RadioSetor',
+      'Setor',
+      'CodigoSetor',
+      'SetorCodigo',
+      'NumeroSetor',
+      'CodSetor',
+    ]),
+    situacao: pickColumn(columnNames, [
+      'RadioSituacao',
+      'Situacao',
+      'Status',
+      'RadioStatus',
+    ]),
+    equipamento: pickColumn(columnNames, [
+      'Equipamento',
+      'RadioEquipamento',
+      'RadioEquipamentoModelo',
+      'Modelo',
+      'RadioModelo',
+      'Descricao',
+    ]),
+  };
+}
+
+async function listDistinctRadioRegistryValues(pool, columnName) {
+  if (!columnName) {
+    return [];
+  }
+
+  const result = await pool.request().query(`
+    SELECT DISTINCT
+      LTRIM(RTRIM(COALESCE(CAST(${escapeIdentifier(columnName)} AS NVARCHAR(4000)), ''))) AS value
+    FROM dbo.dimRadios
+    WHERE ${escapeIdentifier(columnName)} IS NOT NULL
+      AND LTRIM(RTRIM(COALESCE(CAST(${escapeIdentifier(columnName)} AS NVARCHAR(4000)), ''))) <> ''
+    ORDER BY value
+  `);
+
+  return result.recordset
+    .map((row) => normalizeString(row.value))
+    .filter(Boolean);
+}
+
+async function resolveRadioRegistryFieldOptions(pool, columns) {
+  const listColumns = resolveRadioRegistryListColumns(columns);
+  const fieldOptions = {};
+
+  for (const columnName of [
+    listColumns.setor,
+    listColumns.situacao,
+    listColumns.equipamento,
+  ]) {
+    if (!columnName || fieldOptions[columnName]) {
+      continue;
+    }
+
+    fieldOptions[columnName] = await listDistinctRadioRegistryValues(pool, columnName);
+  }
+
+  return fieldOptions;
 }
 
 function stringifyRadioRegistryValue(value, dataType) {
@@ -1392,7 +1491,11 @@ app.get('/api/radios/registry/schema', async (_request, response, next) => {
   try {
     const pool = await getPool();
     const schema = await resolveRadioRegistrySchema(pool);
-    response.json(schema);
+    const fieldOptions = await resolveRadioRegistryFieldOptions(pool, schema.dimRadios);
+    response.json({
+      ...schema,
+      fieldOptions,
+    });
   } catch (error) {
     next(error);
   }
@@ -1403,16 +1506,35 @@ app.get('/api/radios/registry', async (request, response, next) => {
     const query = normalizeString(request.query.query).toUpperCase();
     const pool = await getPool();
     const schema = await resolveRadioRegistrySchema(pool);
+    const listColumns = resolveRadioRegistryListColumns(schema.dimRadios);
+    const dataTypesByColumn = Object.fromEntries(
+      schema.dimRadios.map((column) => [column.name, column.dataType]),
+    );
     const selectedColumns = schema.dimRadios.map(
       (column) => `dr.${escapeIdentifier(column.name)} AS ${escapeIdentifier(column.name)}`,
     );
-    const whereClause = query
-      ? `
-      WHERE UPPER(LTRIM(RTRIM(COALESCE(CAST(dr.${escapeIdentifier(schema.primaryKey)} AS NVARCHAR(4000)), '')))) LIKE '%' + @query + '%'
-         OR UPPER(LTRIM(RTRIM(COALESCE(CAST(dr.${escapeIdentifier('RadioEquipamentoModelo')} AS NVARCHAR(4000)), '')))) LIKE '%' + @query + '%'
-         OR UPPER(LTRIM(RTRIM(COALESCE(CAST(dr.${escapeIdentifier('Equipamento')} AS NVARCHAR(4000)), '')))) LIKE '%' + @query + '%'
+    const searchableColumns = Array.from(
+      new Set(
+        [
+          schema.primaryKey,
+          listColumns.modelo,
+          listColumns.equipamento,
+          listColumns.setor,
+          listColumns.situacao,
+        ].filter(Boolean),
+      ),
+    );
+    const whereClause =
+      query && searchableColumns.length > 0
+        ? `
+      WHERE ${searchableColumns
+        .map(
+          (columnName) =>
+            `UPPER(LTRIM(RTRIM(COALESCE(CAST(dr.${escapeIdentifier(columnName)} AS NVARCHAR(4000)), '')))) LIKE '%' + @query + '%'`,
+        )
+        .join('\n         OR ')}
     `
-      : '';
+        : '';
 
     const radiosRequest = pool.request();
 
@@ -1460,10 +1582,24 @@ app.get('/api/radios/registry', async (request, response, next) => {
 
         return {
           selo,
-          modelo: stringifyRadioRegistryValue(row.RadioEquipamentoModelo, 'nvarchar'),
-          setor: stringifyRadioRegistryValue(row.RadioSetor, 'int'),
-          situacao: stringifyRadioRegistryValue(row.RadioSituacao, 'nvarchar'),
-          equipamento: stringifyRadioRegistryValue(row.Equipamento, 'nvarchar'),
+          modelo: stringifyRadioRegistryValue(
+            listColumns.modelo ? row[listColumns.modelo] : null,
+            listColumns.modelo ? dataTypesByColumn[listColumns.modelo] : 'nvarchar',
+          ),
+          setor: stringifyRadioRegistryValue(
+            listColumns.setor ? row[listColumns.setor] : null,
+            listColumns.setor ? dataTypesByColumn[listColumns.setor] : 'nvarchar',
+          ),
+          situacao: stringifyRadioRegistryValue(
+            listColumns.situacao ? row[listColumns.situacao] : null,
+            listColumns.situacao ? dataTypesByColumn[listColumns.situacao] : 'nvarchar',
+          ),
+          equipamento: stringifyRadioRegistryValue(
+            listColumns.equipamento ? row[listColumns.equipamento] : null,
+            listColumns.equipamento
+              ? dataTypesByColumn[listColumns.equipamento]
+              : 'nvarchar',
+          ),
           owners: ownersMap.get(selo.toUpperCase()) || [],
         };
       }),
@@ -1709,6 +1845,75 @@ app.put('/api/radios/registry/:selo', async (request, response, next) => {
   await persistRadioRegistry(request, response, next, {
     currentSelo: request.params.selo,
   });
+});
+
+app.delete('/api/radios/registry/:selo', async (request, response, next) => {
+  try {
+    const requestedSelo = normalizeString(request.params.selo).toUpperCase();
+    const password = normalizeString(request.body?.password);
+
+    if (!requestedSelo) {
+      response.status(400).send('O selo do radio e obrigatorio.');
+      return;
+    }
+
+    if (!password) {
+      response.status(400).send('A senha para exclusao e obrigatoria.');
+      return;
+    }
+
+    if (password !== RADIO_REGISTRY_DELETE_PASSWORD) {
+      response.status(403).send('Senha invalida para excluir o cadastro do radio.');
+      return;
+    }
+
+    const pool = await getPool();
+    const schema = await resolveRadioRegistrySchema(pool);
+    const transaction = new sql.Transaction(pool);
+    await transaction.begin();
+
+    try {
+      const existsResult = await new sql.Request(transaction)
+        .input('selo', sql.NVarChar, requestedSelo)
+        .query(`
+          SELECT TOP (1) 1 AS existsFlag
+          FROM dbo.dimRadios
+          WHERE UPPER(LTRIM(RTRIM(${escapeIdentifier(schema.primaryKey)}))) = @selo
+        `);
+
+      if (existsResult.recordset.length === 0) {
+        response.status(404).send('Radio nao encontrado para exclusao.');
+        await transaction.rollback();
+        return;
+      }
+
+      await new sql.Request(transaction)
+        .input('selo', sql.NVarChar, requestedSelo)
+        .query(`
+          DELETE FROM dbo.fatoUsuariosRadios
+          WHERE UPPER(LTRIM(RTRIM(${escapeIdentifier(schema.ownerForeignKey)}))) = @selo
+        `);
+
+      await new sql.Request(transaction)
+        .input('selo', sql.NVarChar, requestedSelo)
+        .query(`
+          DELETE FROM dbo.dimRadios
+          WHERE UPPER(LTRIM(RTRIM(${escapeIdentifier(schema.primaryKey)}))) = @selo
+        `);
+
+      await transaction.commit();
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
+    }
+
+    response.json({
+      ok: true,
+      selo: requestedSelo,
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.get('/api/relatorios/radios', async (request, response, next) => {
@@ -2160,6 +2365,7 @@ app.post('/api/pcp/medicoes-estoque', async (request, response, next) => {
     const nomeAfericao = normalizeString(body.nome_afericao);
     const nomeArmazem = normalizeString(body.nome_armazem);
     const rows = Array.isArray(body.rows) ? body.rows : [];
+    const stockMeasurementTableSql = `dbo.${escapeIdentifier(stockMeasurementTableName)}`;
 
     if (!localId || !idMedicao || !dataMedicao || !usuarioMedicao || !nomeAfericao || !nomeArmazem) {
       response
@@ -2204,7 +2410,6 @@ app.post('/api/pcp/medicoes-estoque', async (request, response, next) => {
 
     const pool = await getPool();
     const transaction = new sql.Transaction(pool);
-    const stockMeasurementTableSql = `dbo.${escapeIdentifier(stockMeasurementTableName)}`;
     await transaction.begin();
 
     try {
@@ -2212,14 +2417,14 @@ app.post('/api/pcp/medicoes-estoque', async (request, response, next) => {
         .input('id_medicao', sql.NVarChar(50), idMedicao)
         .query(`
           DELETE FROM ${stockMeasurementTableSql}
-          WHERE UPPER(LTRIM(RTRIM([id_medicao]))) = UPPER(@id_medicao)
+          WHERE [id_medicao] = @id_medicao
         `);
 
       for (const row of normalizedRows) {
         const parsedDate = parseDateOnly(row.data_medicao);
         const parsedAngle = toFloatOrNull(row.angulo_graus);
-        const parsedMeasure = toFloatOrNull(row.medida_metros);
         const hasMeasureValue = row.medida_metros.length > 0;
+        const parsedMeasure = hasMeasureValue ? toFloatOrNull(row.medida_metros) : null;
 
         if (!parsedDate || parsedAngle === null || (hasMeasureValue && parsedMeasure === null)) {
           throw new Error(
@@ -2271,9 +2476,8 @@ app.post('/api/pcp/medicoes-estoque', async (request, response, next) => {
 
     removeLocalFallbackItems(
       localStockMeasurementFallbackPath,
-      (item) => normalizeString(item?.id_medicao).toUpperCase() === idMedicao.toUpperCase(),
+      (item) => normalizeString(item?.id_medicao) === idMedicao,
     );
-
     [...normalizedRows].reverse().forEach((row) => {
       appendLocalFallback(localStockMeasurementFallbackPath, row);
     });
@@ -2291,137 +2495,33 @@ app.post('/api/pcp/medicoes-estoque', async (request, response, next) => {
   }
 });
 
-app.post('/api/pcp/medicoes-estoque', async (request, response, next) => {
+app.delete('/api/pcp/medicoes-estoque/:idMedicao', async (request, response, next) => {
   try {
-    const body = request.body || {};
-    const localId = normalizeString(body.localId);
-    const idMedicao = normalizeString(body.id_medicao);
-    const dataMedicao = normalizeString(body.data_medicao);
-    const usuarioMedicao = normalizeString(body.usuario_medicao);
-    const usuarioMatricula = normalizeString(body.usuario_matricula);
-    const nomeAfericao = normalizeString(body.nome_afericao);
-    const nomeArmazem = normalizeString(body.nome_armazem);
-    const rows = Array.isArray(body.rows) ? body.rows : [];
+    const idMedicao = normalizeString(request.params.idMedicao);
+    const stockMeasurementTableSql = `dbo.${escapeIdentifier(stockMeasurementTableName)}`;
 
-    if (!localId || !idMedicao || !dataMedicao || !usuarioMedicao || !nomeAfericao || !nomeArmazem) {
-      response
-        .status(400)
-        .send('Campos obrigatorios ausentes: localId, id_medicao, data_medicao, usuario_medicao, nome_afericao, nome_armazem.');
-      return;
-    }
-
-    if (rows.length === 0) {
-      response.status(400).send('A medicao precisa ter ao menos uma linha.');
-      return;
-    }
-
-    const normalizedRows = rows.map((row) => ({
-      id_medicao: normalizeString(row?.id_medicao || idMedicao),
-      data_medicao: normalizeString(row?.data_medicao || dataMedicao),
-      usuario_medicao: normalizeString(row?.usuario_medicao || usuarioMedicao),
-      nome_afericao: normalizeString(row?.nome_afericao || nomeAfericao),
-      nome_armazem: normalizeString(row?.nome_armazem || nomeArmazem),
-      lado_medicao: normalizeString(row?.lado_medicao).toUpperCase(),
-      arco: Number(row?.arco || 0),
-      angulo_graus: normalizeString(row?.angulo_graus),
-      medida_metros: normalizeString(row?.medida_metros),
-    }));
-
-    const invalidRow = normalizedRows.find(
-      (row) =>
-        !row.id_medicao ||
-        !row.data_medicao ||
-        !row.usuario_medicao ||
-        !row.nome_afericao ||
-        !row.nome_armazem ||
-        !row.lado_medicao ||
-        !row.arco ||
-        !row.angulo_graus,
-    );
-
-    if (invalidRow) {
-      response.status(400).send('Existem linhas de medicao com campos obrigatorios ausentes.');
+    if (!idMedicao) {
+      response.status(400).send('O id_medicao e obrigatorio para excluir a medicao.');
       return;
     }
 
     const pool = await getPool();
-    const transaction = new sql.Transaction(pool);
-    await transaction.begin();
-    const stockMeasurementTableSql = `dbo.${escapeIdentifier(stockMeasurementTableName)}`;
+    await pool
+      .request()
+      .input('id_medicao', sql.NVarChar(50), idMedicao)
+      .query(`
+        DELETE FROM ${stockMeasurementTableSql}
+        WHERE [id_medicao] = @id_medicao
+      `);
 
-    try {
-      await new sql.Request(transaction)
-        .input('id_medicao', sql.NVarChar(50), idMedicao)
-        .query(`
-          DELETE FROM ${stockMeasurementTableSql}
-          WHERE UPPER(LTRIM(RTRIM([id_medicao]))) = UPPER(@id_medicao)
-        `);
+    removeLocalFallbackItems(
+      localStockMeasurementFallbackPath,
+      (item) => normalizeString(item?.id_medicao) === idMedicao,
+    );
 
-      for (const row of normalizedRows) {
-        const parsedDate = parseDateOnly(row.data_medicao);
-        const parsedAngle = toFloatOrNull(row.angulo_graus);
-        const parsedMeasure = toFloatOrNull(row.medida_metros);
-        const hasMeasureValue = row.medida_metros.length > 0;
-
-        if (!parsedDate || parsedAngle === null || (hasMeasureValue && parsedMeasure === null)) {
-          throw new Error(
-            'As linhas de medicao precisam ter data valida, valor numerico em angulo_graus e medida_metros numerica quando informada.',
-          );
-        }
-
-        await new sql.Request(transaction)
-          .input('id_medicao', sql.NVarChar(50), row.id_medicao)
-          .input('data_medicao', sql.Date, parsedDate)
-          .input('usuario_medicao', sql.NVarChar(200), row.usuario_medicao)
-          .input('nome_afericao', sql.VarChar(100), row.nome_afericao)
-          .input('nome_armazem', sql.VarChar(100), row.nome_armazem)
-          .input('lado_medicao', sql.NVarChar(16), row.lado_medicao)
-          .input('arco', sql.Int, row.arco)
-          .input('angulo_graus', sql.Float, parsedAngle)
-          .input('medida_metros', sql.Float, parsedMeasure)
-          .query(`
-            INSERT INTO dbo.[base_aferição_estoque] (
-              [id_medicao],
-              [data_medicao],
-              [usuario_medicao],
-              [nome_afericao],
-              [nome_armazem],
-              [lado_medicao],
-              [arco],
-              [angulo_graus],
-              [medida_metros]
-            )
-            VALUES (
-              @id_medicao,
-              @data_medicao,
-              @usuario_medicao,
-              @nome_afericao,
-              @nome_armazem,
-              @lado_medicao,
-              @arco,
-              @angulo_graus,
-              @medida_metros
-            )
-          `);
-      }
-
-      await transaction.commit();
-    } catch (error) {
-      await transaction.rollback();
-      throw error;
-    }
-
-    [...normalizedRows].reverse().forEach((row) => {
-      appendLocalFallback(localStockMeasurementFallbackPath, row);
-    });
-
-    response.status(201).json({
+    response.json({
       ok: true,
-      rows: normalizedRows.length,
       id_medicao: idMedicao,
-      nome_afericao: nomeAfericao,
-      nome_armazem: nomeArmazem,
-      usuario_matricula: usuarioMatricula,
     });
   } catch (error) {
     next(error);

@@ -186,14 +186,14 @@ export default function CadastroRadiosScreen() {
   const [authorized, setAuthorized] = useState<boolean | null>(null);
   const [schema, setSchema] = useState<RadioRegistrySchema | null>(null);
   const [items, setItems] = useState<
-    Array<{
+    {
       selo: string;
       modelo: string;
       setor: string;
       situacao: string;
       equipamento: string;
       owners: RadioRegistryOwner[];
-    }>
+    }[]
   >([]);
   const [search, setSearch] = useState('');
   const [form, setForm] = useState<RadioRegistryFormState>(createEmptyRecord(null));
