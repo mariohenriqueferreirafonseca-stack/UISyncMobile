@@ -115,3 +115,12 @@ Para gerar o APK:
 ```bash
 npx eas build -p android --profile preview
 ```
+## Como buildar localmente no dispositivo
+
+```bash
+cd C:\Users\Lar\Desktop\UISyncMobile
+npx expo prebuild
+
+cd android
+.\gradlew assembleRelease
+```

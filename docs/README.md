@@ -4,6 +4,7 @@ UISyncMobile e um app mobile em Expo/React Native com backend em Node.js + Expre
 
 ## O que o app faz
 
+O UISync Mobile é um app projetado para gravação de dados de forma operacional, sendo esses dados a base para relatórios do sistema UISync.
 - Almoxarifado: inventario com leitura manual/codigo de barras, foto e fila offline.
 - Fiscal: conferencia de radios com checklist, fotos e cadastro de radios.
 - PCP: medicao de estoque com salvamento local e sincronizacao.
